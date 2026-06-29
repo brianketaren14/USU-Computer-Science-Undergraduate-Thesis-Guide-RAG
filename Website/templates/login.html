@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — Panduan Skripsi IK USU</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a;
+    --border: rgba(255,255,255,0.08); --border-s: rgba(255,255,255,0.16);
+    --text: #e8eaf0; --muted: #7a7f9a; --dim: #4a4f6a;
+    --accent: #4f7eff; --accent-h: #6b94ff;
+    --danger: #ef4444; --warning: #f59e0b;
+    --radius: 12px;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 1rem;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border-s);
+    border-radius: 20px; padding: 2.5rem;
+    width: 100%; max-width: 420px; text-align: center;
+  }
+  .logo {
+    width: 58px; height: 58px;
+    background: linear-gradient(135deg, #4f7eff, #7c3aed);
+    border-radius: 16px; margin: 0 auto 1.25rem;
+    display: flex; align-items: center; justify-content: center; font-size: 28px;
+  }
+  h1 { font-size: 1.35rem; font-weight: 700; margin-bottom: .35rem; }
+  .sub { font-size: .875rem; color: var(--muted); margin-bottom: 1.75rem; line-height: 1.55; }
+  .field { position: relative; margin-bottom: 1rem; }
+  .field-icon { position: absolute; left: .9rem; top: 50%; transform: translateY(-50%); font-size: 1rem; pointer-events: none; }
+  .field input {
+    width: 100%; padding: .75rem 2.75rem;
+    background: var(--surface2); border: 1px solid var(--border-s);
+    border-radius: var(--radius); color: var(--text);
+    font-size: .9rem; outline: none; transition: border .2s;
+  }
+  .field input:focus { border-color: var(--accent); }
+  .eye { position: absolute; right: .85rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; padding: .25rem; border-radius: 6px; }
+  .eye:hover { color: var(--text); }
+  .btn {
+    width: 100%; padding: .8rem;
+    background: var(--accent); color: #fff;
+    font-weight: 700; font-size: .95rem;
+    border: none; border-radius: var(--radius);
+    cursor: pointer; transition: background .2s, transform .1s;
+  }
+  .btn:hover { background: var(--accent-h); }
+  .btn:active { transform: scale(.98); }
+  .btn:disabled { background: var(--dim); cursor: not-allowed; }
+  .err {
+    margin-top: .75rem; font-size: .82rem; color: var(--danger);
+    background: rgba(239,68,68,.1); border-radius: 8px;
+    padding: .5rem .75rem; display: none;
+  }
+  .warn { margin-top: .4rem; font-size: .8rem; color: var(--warning); display: none; }
+  .dots { display: none; }
+  .dots span { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #fff; margin: 0 2px; animation: b .8s infinite; }
+  .dots span:nth-child(2) { animation-delay: .15s; }
+  .dots span:nth-child(3) { animation-delay: .3s; }
+  @keyframes b { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">📚</div>
+  <h1>Panduan Skripsi IK USU</h1>
+  <p class="sub">Sistem RAG khusus panduan skripsi<br>Program Studi Ilmu Komputer USU.</p>
+
+  <div class="field">
+    <span class="field-icon">👤</span>
+    <input type="text" id="uname" placeholder="Username" autocomplete="username" maxlength="50" style="padding-right:.9rem" />
+  </div>
+  <div class="field">
+    <span class="field-icon">🔒</span>
+    <input type="password" id="pwd" placeholder="Kata sandi" autocomplete="current-password" />
+    <button class="eye" id="eye" type="button">👁️</button>
+  </div>
+  <button class="btn" id="btn">
+    <span id="btn-text">Masuk</span>
+    <span class="dots" id="dots"><span></span><span></span><span></span></span>
+  </button>
+  <div class="err" id="err">Kata sandi salah. Coba lagi.</div>
+  <div class="warn" id="warn"></div>
+</div>
+<script>
+const uname = document.getElementById('uname');
+const pwd  = document.getElementById('pwd');
+const btn  = document.getElementById('btn');
+const err  = document.getElementById('err');
+const warn = document.getElementById('warn');
+const dots = document.getElementById('dots');
+const btnText = document.getElementById('btn-text');
+let locked = false;
+
+document.getElementById('eye').onclick = () => {
+  pwd.type = pwd.type === 'password' ? 'text' : 'password';
+};
+uname.addEventListener('keydown', e => { if (e.key === 'Enter') pwd.focus(); });
+pwd.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+btn.onclick = doLogin;
+
+async function doLogin() {
+  if (locked) return;
+  const nameVal = uname.value.trim();
+  const val = pwd.value.trim();
+  if (!nameVal) { uname.focus(); return; }
+  if (!val) { pwd.focus(); return; }
+  btn.disabled = true;
+  btnText.style.display = 'none';
+  dots.style.display = 'inline';
+  err.style.display = 'none';
+
+  try {
+    const r = await fetch('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: nameVal, password: val })
+    });
+    const data = await r.json();
+    if (data.success) {
+      window.location.href = '/';
+    } else {
+      err.textContent = data.error || 'Kata sandi salah. Coba lagi.';
+      err.style.display = 'block';
+      pwd.value = '';
+      pwd.focus();
+      if (data.locked) {
+        locked = true;
+        warn.textContent = '🔒 Akses dikunci. Hubungi administrator.';
+        warn.style.display = 'block';
+        btn.disabled = true;
+      } else if (data.attempts >= 3) {
+        const rem = 5 - data.attempts;
+        warn.textContent = `⚠️ ${rem} percobaan tersisa.`;
+        warn.style.display = 'block';
+      }
+    }
+  } catch {
+    err.textContent = 'Gagal menghubungi server.';
+    err.style.display = 'block';
+  } finally {
+    if (!locked) {
+      btn.disabled = false;
+      btnText.style.display = 'inline';
+      dots.style.display = 'none';
+    }
+  }
+}
+</script>
+</body>
+</html>
