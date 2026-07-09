@@ -16,8 +16,8 @@ app.secret_key = os.environ.get("SECRET_KEY")
 # ──────────────────────────────────────────────
 # CONFIG  (dari environment variable atau .env)
 # ──────────────────────────────────────────────
-APP_PASSWORD = os.environ.get("APP_PASSWORD")
-APP_USERNAME = os.environ.get("APP_USERNAME")
+APP_PASSWORD = ""
+APP_USERNAME = ""
 
 QDRANT_URL        = os.environ.get("QDRANT_URL", "")
 QDRANT_API_KEY    = os.environ.get("QDRANT_API_KEY", "")
