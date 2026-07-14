@@ -4,8 +4,6 @@ An LLM-powered question-answering system built with **Retrieval-Augmented Genera
 
 Instead of manually digging through a long, dense, and often image-heavy guideline document, students can simply ask a question in natural language — e.g. *"What is the maximum number of pages for Chapter 1?"* or *"What citation format should I use?"* — and get an instant, grounded answer sourced directly from the official guideline.
 
-🔗 **Live Demo:** [rag-undergraduate-thesis-guide-comp.vercel.app](https://rag-undergraduate-thesis-guide-comp.vercel.app)
-
 ---
 
 ## ✨ Features
@@ -22,8 +20,7 @@ Instead of manually digging through a long, dense, and often image-heavy guideli
 <img width="1910" height="915" alt="Main Page" src="https://github.com/user-attachments/assets/80c58bed-b3a8-4f93-9d21-20afc5a9c1a7" />
 **Chat Page**
 <img width="1910" height="1503" alt="image" src="https://github.com/user-attachments/assets/c45f096c-5b2d-465b-b6ac-ece43691c4a7" />
-**Setting Page**
-<img width="1910" height="1158" alt="image" src="https://github.com/user-attachments/assets/5709eea7-63a1-4e79-a7a8-25021608f42d" />
+
 
 ## 🧠 How It Works
 
