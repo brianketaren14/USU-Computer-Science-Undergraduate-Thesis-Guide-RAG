@@ -8,6 +8,10 @@ from flask import (
     session, redirect, url_for
 )
 from dotenv import load_dotenv
+from huggingface_hub import InferenceClient
+from langchain_groq import ChatGroq
+from sentence_transformers import CrossEncoder
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -16,30 +20,33 @@ app.secret_key = os.environ.get("SECRET_KEY")
 # ──────────────────────────────────────────────
 # CONFIG  (dari environment variable atau .env)
 # ──────────────────────────────────────────────
-APP_PASSWORD = ""
-APP_USERNAME = ""
+APP_PASSWORD = os.environ.get("APP_PASSWORD")
+APP_USERNAME = os.environ.get("APP_USERNAME")
 
 QDRANT_URL        = os.environ.get("QDRANT_URL", "")
 QDRANT_API_KEY    = os.environ.get("QDRANT_API_KEY", "")
 QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION")
 
-NIM_URL    = os.environ.get("NIM_URL")
-NIM_API_KEY = os.environ.get("NIM_API_KEY")
-NIM_MODEL  = os.environ.get("NIM_MODEL")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_MODEL  = os.environ.get("GROQ_MODEL")
 
 TOP_K          = int(os.environ.get("TOP_K", 5))
 SCORE_THRESHOLD = float(os.environ.get("SCORE_THRESHOLD", 0.40))
 MAX_TOKENS     = int(os.environ.get("MAX_TOKENS", 1024))
 TEMPERATURE    = float(os.environ.get("TEMPERATURE", 0.20))
 
-HF_EMBEDDING_URL = (
-    "https://api-inference.huggingface.co/pipeline/feature-extraction/"
-    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-)
+# ──────────────────────────────────────────────
+# HUGGINGFACE INFERENCE CLIENT
+# ──────────────────────────────────────────────
+HF_TOKEN = os.environ.get("HF_TOKEN", "")  # Opsional, tapi disarankan
 
-# Tambahkan baris ini
-HF_RERANK_URL = "https://api-inference.huggingface.co/models/cross-encoder/ms-marco-MiniLM-L-12-v2"
-HF_TOKEN = os.environ.get("HF_TOKEN", "") # Opsional, tapi disarankan
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+
+model_name = "cross-encoder/ms-marco-MiniLM-L-12-v2"
+local_reranker = CrossEncoder(model_name)
+
+
+hf_client = InferenceClient(api_key=HF_TOKEN)
 
 # ──────────────────────────────────────────────
 # GUARDRAIL KEYWORDS
@@ -65,51 +72,37 @@ def is_on_topic(query: str) -> bool:
     return any(kw in q for kw in SKRIPSI_KEYWORDS)
 
 # ──────────────────────────────────────────────
-# API — HUGGINGFACE RERANKING
+# API — HUGGINGFACE RERANKING (via InferenceClient)
 # ──────────────────────────────────────────────
+
+
 def rerank_hf(query: str, docs: list, top_k: int) -> list:
     if not docs:
         return []
-    
-    # Format input pasangan teks untuk pipeline text-classification di HuggingFace
-    inputs = [{"text": query, "text_pair": d["text"]} for d in docs]
-    
-    headers = {"Content-Type": "application/json"}
-    if HF_TOKEN:
-        headers["Authorization"] = f"Bearer {HF_TOKEN}"
-        
+
     try:
-        resp = requests.post(
-            HF_RERANK_URL,
-            headers=headers,
-            json={"inputs": inputs, "options": {"wait_for_model": True}},
-            timeout=30
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        # 1. Siapkan pasangan data [(query, doc_1), (query, doc_2), ...]
+        # Model lokal bisa memproses batch sekaligus dengan sangat cepat!
+        pairs = [[query, d["text"]] for d in docs]
         
-        # Ekstrak skor dari respons HuggingFace 
-        # Format respons umumnya: [[{'label': 'LABEL_0', 'score': 0.85}], [...]]
-        for i, result in enumerate(data):
-            score = 0
-            if isinstance(result, list) and len(result) > 0:
-                score = result[0].get("score", 0)
-            elif isinstance(result, dict):
-                score = result.get("score", 0)
-                
+        # 2. Prediksi skor relevansi untuk semua dokumen secara langsung
+        # Tidak perlu loop satu per satu karena library lokal mendukung batching efisien.
+        scores = local_reranker.predict(pairs)
+        
+        # 3. Masukkan skor kembali ke masing-masing dokumen
+        for i, score in enumerate(scores):
+            # MiniLM lokal mengembalikan raw score (makin tinggi nilainya, makin relevan)
             docs[i]["rerank_score"] = float(score)
             
-        # Urutkan berdasarkan skor tertinggi
+        # 4. Urutkan berdasarkan skor tertinggi
         docs.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
         
-        # Kembalikan hanya sejumlah top_k terbaik
         return docs[:top_k]
-        
+
     except Exception as e:
-        app.logger.error(f"HF Reranking error: {e}")
-        # Fallback: jika gagal, kembalikan dokumen asli dari Qdrant
+        app.logger.error(f"Local Reranking error: {e}")
+        # Fallback: jika gagal, kembalikan dokumen apa adanya
         return docs[:top_k]
-    
 # ──────────────────────────────────────────────
 # AUTH
 # ──────────────────────────────────────────────
@@ -173,20 +166,18 @@ def index():
 
 
 # ──────────────────────────────────────────────
-# API — EMBEDDING
+# API — EMBEDDING (via InferenceClient)
 # ──────────────────────────────────────────────
 def get_embedding(text: str):
     try:
-        resp = requests.post(
-            HF_EMBEDDING_URL,
-            headers={"Content-Type": "application/json"},
-            json={"inputs": text, "options": {"wait_for_model": True}},
-            timeout=30,
+        embedding = hf_client.feature_extraction(
+            text,
+            model=EMBEDDING_MODEL,
         )
-        resp.raise_for_status()
-        data = resp.json()
-        # HuggingFace returns list-of-list; flatten to 1-D
-        vec = data[0] if isinstance(data[0], list) else data
+        # Hasil bisa berupa numpy array atau list-of-list; ratakan ke 1-D
+        vec = embedding.tolist() if hasattr(embedding, "tolist") else embedding
+        if isinstance(vec, list) and len(vec) > 0 and isinstance(vec[0], list):
+            vec = vec[0]
         return vec
     except Exception as e:
         app.logger.error(f"Embedding error: {e}")
@@ -237,45 +228,39 @@ def search_qdrant(vector, top_k=None, threshold=None, collection=None):
 # ──────────────────────────────────────────────
 # API — NIM LLM
 # ──────────────────────────────────────────────
+from langchain_groq import ChatGroq
+
 def call_llm(messages, max_tokens=None, temperature=None):
-    key   = NIM_API_KEY
-    model = NIM_MODEL
-    base  = NIM_URL
+    # Pastikan API key dan model sudah tersedia
+    key = GROQ_API_KEY  # Ganti NIM_API_KEY dengan Groq API Key kamu
+    model = GROQ_MODEL  # Ganti NIM_MODEL menjadi model Groq (misal: "llama-3.3-70b-versatile")
 
     if not key:
-        return {"text": "⚠️ NIM API Key belum dikonfigurasi di server (.env).", "error": True}
+        return {"text": "⚠️ Groq API Key belum dikonfigurasi di server (.env).", "error": True}
 
     try:
-        resp = requests.post(
-            f"{base}/chat/completions",
-            headers={
-                "Content-Type":  "application/json",
-                "Authorization": f"Bearer {key}",
-            },
-            json={
-                "model":       model,
-                "messages":    messages,
-                "max_tokens":  max_tokens or MAX_TOKENS,
-                "temperature": temperature if temperature is not None else TEMPERATURE,
-                "stream":      False,
-            },
-            timeout=60,
+        # 1. Inisialisasi ChatGroq Client
+        llm = ChatGroq(
+            groq_api_key=key,
+            model_name=model,
+            temperature=temperature if temperature is not None else TEMPERATURE,
+            max_tokens=max_tokens or MAX_TOKENS,
+            # timeout=60 # Opsional, jika ingin membatasi waktu tunggu
         )
-        resp.raise_for_status()
-        data = resp.json()
-        return {"text": data["choices"][0]["message"]["content"], "error": False}
-    except requests.HTTPError as e:
-        err_body = {}
-        try:
-            err_body = e.response.json()
-        except Exception:
-            pass
-        msg = err_body.get("error", {}).get("message", str(e))
-        app.logger.error(f"LLM HTTP error: {msg}")
-        return {"text": f"⚠️ Error dari NIM API: {msg}", "error": True}
+
+        # 2. Format ulang messages jika masih berupa raw dict/list standard dari OpenAI format
+        # ChatGroq menerima list of tuples atau objek BaseMessage, namun format list [dict] bawaan OpenAI juga didukung secara native.
+        
+        # 3. Panggil API Groq
+        response = llm.invoke(messages)
+        
+        # 4. Ambil teks output
+        return {"text": response.content, "error": False}
+
     except Exception as e:
-        app.logger.error(f"LLM error: {e}")
-        return {"text": f"⚠️ Gagal menghubungi NIM API: {e}", "error": True}
+        # Menangkap error spesifik API atau error koneksi umum
+        app.logger.error(f"Groq LLM error: {e}")
+        return {"text": f"⚠️ Gagal menghubungi Groq API: {str(e)}", "error": True}
 
 
 # ──────────────────────────────────────────────
@@ -396,8 +381,6 @@ def health():
     return jsonify({
         "status":     "ok",
         "qdrant_url": bool(QDRANT_URL),
-        "nim_key":    bool(NIM_API_KEY),
-        "model":      NIM_MODEL,
         "collection": QDRANT_COLLECTION,
     })
 
