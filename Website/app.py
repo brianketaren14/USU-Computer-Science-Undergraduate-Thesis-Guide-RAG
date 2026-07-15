@@ -14,6 +14,8 @@ from sentence_transformers import CrossEncoder, SentenceTransformer
 
 load_dotenv()
 
+from langsmith import traceable
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY")
 
@@ -299,6 +301,7 @@ ATURAN PENTING:
 # ──────────────────────────────────────────────
 @app.route("/api/chat", methods=["POST"])
 @login_required
+@traceable
 def chat():
     body = request.get_json(silent=True) or {}
     query       = (body.get("query") or "").strip()
