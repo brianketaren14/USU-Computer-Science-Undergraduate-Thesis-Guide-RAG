@@ -11,7 +11,7 @@ Instead of manually digging through a long, dense, and often image-heavy guideli
 - **Natural language Q&A** over the official Fasilkom-TI USU thesis writing guideline
 - **Semantic chunking** of the source document for more contextually coherent retrieval
 - **Vector search** powered by Qdrant for fast and accurate similarity search
-- **Reranking** with FlashRank to improve the relevance of retrieved context before generation
+- **Reranking** with CrossEncoder to improve the relevance of retrieved context before generation
 - **RAG evaluation pipeline** using RAGAS to measure faithfulness, relevancy, and overall answer quality
 - **Web-based chat interface** for an interactive, conversational experience
 
@@ -44,7 +44,7 @@ The pipeline is split into two main stages:
 | Embeddings | `sentence-transformers` |
 | Chunking | `semantic-text-splitter` |
 | Vector Database | Qdrant (`qdrant-client`) |
-| Model | llama-4-maverick-17b |
+| Model | llama-3.1-8b-instruct |
 | Reranking | CrossEncoder|
 | Evaluation | RAGAS |
 | Web App | Flask (HTML/CSS/JS frontend) |
@@ -53,12 +53,12 @@ The pipeline is split into two main stages:
 ## 📊 Evaluation
 
 The RAG pipeline is evaluated using **RAGAS**, with results stored in `ragas_hasil.csv`. Metrics tracked include answer faithfulness, context relevancy, and overall answer correctness against the official guideline — helping validate that the system's answers stay grounded in the source document rather than hallucinated.
+- **faithfulness** = 76%
+- **answer_relevancy** = 81%
+- **context_precision** = 56%
+- **context_recall** = 76%
+- **answer_correctness** = 64%
 
 ## 🎯 Motivation
 
 USU thesis guidelines are often long, formatted as scanned/rasterized pages, and tedious to search through manually. This project aims to make that information instantly accessible to students, reducing friction in one of the more confusing parts of the thesis-writing process.
-
-## 👤 Author
-
-**Brian** — Computer Science student, Fasilkom-TI, Universitas Sumatera Utara
-GitHub: [@brianketaren14](https://github.com/brianketaren14)
